@@ -1,0 +1,8 @@
+
+# Steps to compile ampcor_flex.F90
+gfortran -fPIC -O3 -DHAVE_FFTW=1 -c -o cfft1d_jpl.o -I/usr/local/include -L/usr/local/lib cfft1d_jpl.F90
+f2py --opt='-O3' --f90flags='-fPIC' -L$HOME/miniconda3/lib -I$HOME/miniconda3/include -DHAVE_FFTW=1 -lfftw3f -I/usr/local/include -L/usr/local/lib cfft1d_jpl.o -c ampcor_flex.F90 -m ampcor_flex
+
+
+# run the test :
+python test_corr_class.py

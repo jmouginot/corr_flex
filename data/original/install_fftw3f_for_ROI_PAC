@@ -1,0 +1,8 @@
+
+wget http://www.fftw.org/fftw-3.3.8.tar.gz
+tar -xzvf fftw-3.3.8.tar.gz
+cd fftw-3.3.8
+./configure --enable-single --enable-shared 
+make
+sudo make install
+

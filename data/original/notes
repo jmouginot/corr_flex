@@ -1,0 +1,26 @@
+# this is original files from ROI_PAC, the software is not maintained anymore.
+
+# I kept rdf_reader_f90 and rdf_reader_f90io so I did not have to change ampcor ampcor.F 
+# but they are not used in this test (we use the old way of reading the input file)
+#
+# FFTW libray is needed with single float enable: 
+# wget http://www.fftw.org/fftw-3.3.8.tar.gz
+# tar -xzvf fftw-3.3.8.tar.gz
+# cd fftw-3.3.8
+# ./configure --enable-single --enable-shared
+# make
+# sudo make install
+#
+# Below are the steps
+
+gfortran -DHAVE_FFTW=1 -g -O2 -ffixed-line-length-132 -c -o ampcor.o ampcor.F
+gfortran -DHAVE_FFTW=1 -g -O2 -ffixed-line-length-132 -c -o cfft1d_jpl.o cfft1d_jpl.F
+
+gfortran  -g -O2 -ffixed-line-length-132 -c -o rdf_reader_f90.o rdf_reader_f90.f
+gfortran  -g -O2 -ffixed-line-length-132 -c -o rdf_reader_f90io.o rdf_reader_f90io.f
+
+gfortran  -g -O2 -ffixed-line-length-132   -o ampcor ampcor.o  rdf_reader_f90.o rdf_reader_f90io.o cfft1d_jpl.o -lfftw3f
+
+# command to run
+./ampcor 20180618_3s-20180630_3s.offmap_10.in old > output10 &
+
