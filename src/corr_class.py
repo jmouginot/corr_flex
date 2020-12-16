@@ -105,8 +105,7 @@ class corr_class:
         print('self.verbose',self.verbose)
         print('self.debug',self.debug)
         print('self.off',self.off)
-        print('self.off.IsUsed',self.off.IsUsed)
-# }}}
+        print('self.off.IsUsed',self.off.IsUsed) # }}}
     def p_output_off(self): # {{{
         # prepare/initialize output offmap 
         ny_off = np.int32( (self.y_end-self.y_start)/self.ny_step )
@@ -126,11 +125,10 @@ class corr_class:
         self.off.y_end = self.y_start + self.ny_step*ny_off
         self.off.azsp = self.ny_step
         self.off.ofw_w = self.nx_win
-        self.off.ofw_h = self.ny_win
-
-    #}}}
+        self.off.ofw_h = self.ny_win #}}}
     def ampcor(self): # {{{
-        import ampcor_flex
+        #import ampcor_flex_debug as ampcor_flex
+        import ampcor_flex as ampcor_flex
         if self.progress:
             self.describe()
         # default values for x_start,end y_start,end {{{
@@ -165,7 +163,7 @@ class corr_class:
         if self.off.IsUsed and self.off.data.vx is None:
             self.p_offmap_out()
         #}}}
-        if self.restart: # {{{
+        if self.restart: # restart option - read last value written in output file{{{
             if os.path.exists(self.output_file):
                 statinfo = os.stat(self.output_file)
                 if statinfo.st_size != 0:
@@ -180,11 +178,9 @@ class corr_class:
                 else:
                     self.restart=False
             else:
-                self.restart=False
-        # }}}
-        # read initial offsetmap if provided {{{
-        # should be 2 files : init_shiftmap+'
-        if self.init_shiftmap is not None and self.use_shiftmap:
+                self.restart=False # }}}
+        if self.init_shiftmap is not None and self.use_shiftmap: # read initial offsetmap if provided {{{
+            # should be 2 files : init_shiftmap+'
             self.shiftmap = off_param()
             self.shiftmap.load(self.init_shiftmap+'.par')
 
@@ -201,11 +197,9 @@ class corr_class:
             self.shiftmap.m_yshift = vy_shiftmap
             
             del vx_shiftmap
-            del vy_shiftmap
-        # }}}    
-        # read initial search-distance map if provided {{{
-        # should be 2 files : binary + par'
-        if self.init_searchmap is not None and self.use_searchmap:
+            del vy_shiftmap # }}}    
+        if self.init_searchmap is not None and self.use_searchmap: # read initial search-distance map if provided {{{
+            # should be 2 files : binary + par'
             self.searchmap = off_param()
             self.searchmap.load(self.init_searchmap+'.par')
 
@@ -221,30 +215,30 @@ class corr_class:
             self.searchmap.m_nx_search = vx_searchmap
             self.searchmap.m_ny_search = vy_searchmap
             del vx_searchmap
-            del vy_searchmap
-        # }}}
-        # read initial mask map if provided {{{
-        if self.mask_file is not None and self.use_mask:
+            del vy_searchmap # }}}
+        if self.mask_file is not None and self.use_mask: # read initial mask map if provided {{{
             self.mask = off_param()
             self.load(self.mask_file+'.par')
         
             f=open(self.mask_file,'rb')
-            self.mask.data = np.fromfile(f,dtype=np.uint8).reshape(self.mask.nrec,self.mask.npix).byteswap()
-        # }}} 
-        # initialization input, output {{{
+            self.mask.data = np.fromfile(f,dtype=np.uint8).reshape(self.mask.nrec,self.mask.npix).byteswap() # }}} 
+        
+        # initialization input, output
         im1 = np.zeros([self.ny_win,self.nx_im1],dtype=self.datatype)
     
         # read master and slave files (may cause memory problem if the file is too large)
-        
         f1 = open(self.im1file,'rb')
         
         jstart_master = np.int32(self.y_start-self.ny_win/2).clip(0,self.ny_im1-self.ny_win)
+        if jstart_master < 0: jstart_master=0
+
         f1.seek(self.nx_im1*np.dtype(self.datatype).itemsize*jstart_master)
-        ny_master = np.int32( self.y_end - self.y_start + self.ny_win + 1 ) # y from self.ny_win/2 to self.ny_im1-self.ny_win/2 with step = ny_step
-        if (jstart_master + ny_master) > self.ny_im1:
-            ny_master = self.ny_im1 - jstart_master
-        if ny_master < self.ny_win:
-            return
+        
+        ny_master = np.int32( self.y_end - self.y_start + self.ny_win - 1 ) # y from self.ny_win/2 to self.ny_im1-self.ny_win/2 with step = ny_step
+        if (jstart_master + ny_master) > self.ny_im1: ny_master = self.ny_im1 - jstart_master
+        if ny_master < self.ny_win: return
+        
+        if self.debug: print('Reading file 1 - y_start - i_samples :',jstart_master,ny_master+jstart_master-1)
         
         try:
             master = np.fromfile(f1,count=ny_master*self.nx_im1,dtype=self.datatype).byteswap().reshape(ny_master,self.nx_im1)
@@ -257,10 +251,10 @@ class corr_class:
             print(traceback.format_exc())
             return
         
-        if self.debug:
-            import matplotlib.pyplot as plt
-            plt.imshow(np.abs(master)**0.35)
-            plt.show()
+        #if self.debug:
+        #    import matplotlib.pyplot as plt
+        #    plt.imshow(np.abs(master)**0.35)
+        #    plt.show()
 
         min_y0_shift = self.y0_shift
         max_y0_shift = self.y0_shift
@@ -269,32 +263,28 @@ class corr_class:
             min_y0_shift = min( [ min( np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_start*self.y0_polyshift[2])), \
                     min(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_end*self.y0_polyshift[2])) ])
             max_y0_shift = max( [ max(np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_start*self.y0_polyshift[2])), \
-                    max(np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1) * self.y0_polyshift[1] + self.y_end*self.y0_polyshift[2]))])
-        # }}}
-
+                    max(np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1) * self.y0_polyshift[1] + self.y_end*self.y0_polyshift[2]))]) # }}}
         if self.use_shiftmap: # {{{
             # find
             j_shift_start = np.int32((self.y_start - self.shiftmap.y_start) / self.shiftmap.azsp).clip(0,self.shiftmap.nrec-1)
             j_shift_end = np.int32(( ny_master + self.y_start - self.shiftmap.y_start) / self.shiftmap.azsp).clip( 0, self.shiftmap.nrec-1)
             min_y0_shift = np.int32( np.min(self.shiftmap.m_yshift[j_shift_start:j_shift_end,:]) + min_y0_shift)
-            max_y0_shift = np.int32( np.max(self.shiftmap.m_yshift[j_shift_start:j_shift_end,:]) + max_y0_shift)
-        #}}}
-
+            max_y0_shift = np.int32( np.max(self.shiftmap.m_yshift[j_shift_start:j_shift_end,:]) + max_y0_shift) #}}}
         if self.use_searchmap: # {{{
             j_search_start = np.int32((self.y_start - self.searchmap.y_start) / self.searchmap.azsp).clip(0,self.searchmap.nrec-1)
             j_search_end = np.int32(( ny_master + self.y_start - self.searchmap.y_start) / self.searchmap.azsp).clip( 0, self.searchmap.nrec-1)
             max_ny_search = np.int32( np.max(self.searchmap.m_ny_search[j_search_start:j_search_end,:]) )
         else:
-            max_ny_search = self.ny_search
-        #}}}
+            max_ny_search = self.ny_search #}}}
 
-        jmin = np.int32( self.y_start + min_y0_shift - self.ny_win/2 - 2*max_ny_search).clip(0 , self.ny_im2 - self.ny_win - max_ny_search)
-        jmax = np.int32( ny_master + self.y_start + max_y0_shift + self.ny_win/2 + 2*max_ny_search).clip( 0, self.ny_im2 - self.ny_win - max_ny_search) #clip between 0 and number of lines in im2
+        jmin = np.int32( self.y_start + min_y0_shift - self.ny_win/2 - 1*max_ny_search).clip(0 , self.ny_im2 - self.ny_win - max_ny_search)
+        if jmin < 0 : jmin = 0
+
+        jmax = np.int32( ny_master + self.y_start + max_y0_shift + self.ny_win/2 + 1*max_ny_search).clip( 0, self.ny_im2 - self.ny_win - max_ny_search) #clip between 0 and number of lines in im2
 
         ny_slave = jmax - jmin + 1
         
-        if ny_slave < (self.ny_win+2*max_ny_search):
-            return
+        if ny_slave < (self.ny_win+1*max_ny_search): return
         
         jstart_slave = jmin
        
@@ -322,8 +312,9 @@ class corr_class:
             if self.restart:
                 f = open(self.output_file,'a')
             else:
-                f = open(self.output_file,'w')
-        # }}}
+                f = open(self.output_file,'w') # }}}
+
+
         for j_off in range(0,ny_off):# loop over y-direction (azimuth for SAR) {{{
     
             if self.verbose:
@@ -331,22 +322,20 @@ class corr_class:
 
             j_im = j_off*self.ny_step+self.y_start
     
-            if (j_im+self.y0_shift > 2*self.ny_search+self.ny_win/2) and \
-                    (j_im+self.y0_shift < self.ny_im2-self.ny_win/2-2*self.ny_search) and \
+            if (j_im+self.y0_shift > 1*self.ny_search+self.ny_win/2) and \
+                    (j_im+self.y0_shift < self.ny_im2-self.ny_win/2-1*self.ny_search) and \
                     (j_im > self.ny_win/2) and \
                     (j_im < self.ny_im1-self.ny_win/2):
                 
-                # read mask if provided {{{
-                # if entire line is masked, process_this_line is set to False
-                if self.mask is not None and self.use_mask:
+                if self.mask is not None and self.use_mask: # read mask if provided {{{
+                    # if entire line is masked, process_this_line is set to False
                     j_mask = np.int32( (j_im - self.mask.y_start) / self.mask.azsp) # conversion from im y-coord to mask y-coord 
                     if np.max(self.mask.data[j_mask,:]) == 1:
                         process_this_line = True
                     else:
                         process_this_line = False
                 else:
-                    process_this_line = True
-                # }}}
+                    process_this_line = True # }}}
      
                 jmin_im1 = np.int32(j_im-self.ny_win/2) # starting line to be read
                 jmax_im1 = np.int32(j_im+self.ny_win/2) # ending line to be read
@@ -359,13 +348,11 @@ class corr_class:
                     # not using self.y0_shift
                     min_y0_shift = min(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + j_im*self.y0_polyshift[2]))
                     max_y0_shift = max(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + j_im*self.y0_polyshift[2]))
-
                 if self.shiftmap is not None and self.use_shiftmap:
                     # shift is self.y0_shift + self.shiftmap.m_yshift
                     j_shift = np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp) # conversion from image y-coord to offsetmap y-corrd
                     min_y0_shift = np.int32( min( self.shiftmap.m_yshift[j_shift,:]) + min_y0_shift)
-                    max_y0_shift = np.int32( max( self.shiftmap.m_yshift[j_shift,:]) + max_y0_shift)
-                # }}}
+                    max_y0_shift = np.int32( max( self.shiftmap.m_yshift[j_shift,:]) + max_y0_shift) # }}}
                 if self.searchmap is not None and  self.use_searchmap:
                     j_search = np.int32((j_im - self.searchmap.y_start) / self.searchmap.azsp) # conversion from image y-coord to offsetmap y-corrd
                     max_ny_search = np.int32( max( self.searchmap.m_ny_search[j_search,:]) )
@@ -374,8 +361,8 @@ class corr_class:
                 else:
                     max_ny_search = self.ny_search
 
-                jmin_im2 = np.int32( j_im + min_y0_shift - self.ny_win/2 - 2*max_ny_search)
-                jmax_im2 = np.int32( j_im + max_y0_shift + self.ny_win/2 + 2*max_ny_search)
+                jmin_im2 = np.int32( j_im + min_y0_shift - self.ny_win/2 - 1*max_ny_search)
+                jmax_im2 = np.int32( j_im + max_y0_shift + self.ny_win/2 + 1*max_ny_search)
                 
                 if (jmin_im2 < 0) or (jmax_im2 > self.ny_im2):
                     if self.verbose:
@@ -384,7 +371,6 @@ class corr_class:
     
                 if process_this_line:
                     # read master {{{
-                         
                     im1 = master[ jmin_im1 - jstart_master : jmax_im1 - jstart_master , : ]
                     im2 = slave[ jmin_im2 - jstart_slave : jmax_im2 - jstart_slave , : ]
                     # }}}
@@ -401,8 +387,7 @@ class corr_class:
     
                         i_im = np.int32(i_off*self.nx_step+self.x_start) # from output offset x-coord to im x-coord
     
-                        # read mask if provided {{{
-                        if self.mask is not None and self.use_mask:
+                        if self.mask is not None and self.use_mask: # read mask if provided {{{
                             j_mask = np.int32((j_im - self.mask.y_start) / self.mask.azsp) # conversion from im y-coord to mask y-coord
                             i_mask = np.int32((i_im - self.mask.x_start) / self.mask.rgsp) # conversion from im x-coord to mask x-coord
                             if self.mask.data[j_mask,i_mask] == 1:
@@ -410,8 +395,7 @@ class corr_class:
                             else:
                                 process_this_point = False
                         else:
-                            process_this_point = True
-                        # }}}
+                            process_this_point = True # }}}
                         
                         
                         if process_this_point:
@@ -420,12 +404,10 @@ class corr_class:
                             y_shift = self.y0_shift
                             if self.verbose:
                                 print('Initial offset :',x_shift,y_shift)
-
                             if self.x0_polyshift  is not None and self.use_polyshift:
                                 # use polynom instead of constant as initial shift
                                 x_shift = np.int32(self.x0_polyshift[0] + i_im*self.x0_polyshift[1] + j_im*self.x0_polyshift[2])
-                                y_shift = np.int32(self.y0_polyshift[0] + i_im*self.y0_polyshift[1] + j_im*self.y0_polyshift[2])
-                             
+                                y_shift = np.int32(self.y0_polyshift[0] + i_im*self.y0_polyshift[1] + j_im*self.y0_polyshift[2])                            
                             if self.shiftmap is not None and self.use_shiftmap:
                                 # adding shiftmap to initial offset
                                 if self.verbose:
@@ -436,9 +418,7 @@ class corr_class:
                                     print('j_im,i_im',j_im,i_im)
                                     print('j_shift,i_shift',j_shift,i_shift)
                                 x_shift = np.int32(self.shiftmap.m_xshift[j_shift,i_shift] + x_shift)
-                                y_shift = np.int32(self.shiftmap.m_yshift[j_shift,i_shift] + y_shift)
-    
-                            # }}}
+                                y_shift = np.int32(self.shiftmap.m_yshift[j_shift,i_shift] + y_shift)  # }}}
                             if self.searchmap is not None and self.use_searchmap:
                                 j_search = np.int32((j_im - self.searchmap.y_start) / self.searchmap.azsp)
                                 i_search = np.int32((i_im - self.searchmap.x_start) / self.searchmap.rgsp)
@@ -446,33 +426,36 @@ class corr_class:
                                 ny_search = np.int32(self.searchmap.m_ny_search[j_search,i_search])
                             else:
                                 nx_search = self.nx_search
-                                ny_search = self.ny_search
-                            
+                                ny_search = self.ny_search                           
 
                             if self.verbose:
                                 print('Initial offset: ',x_shift,y_shift)
     
-                            if (i_im+x_shift > 2*nx_search + self.nx_win/2) and \
-                                    ( i_im + x_shift < self.nx_im2 - self.nx_win / 2 - 2 * nx_search) and \
+                            if (i_im+x_shift > nx_search + self.nx_win/2) and \
+                                    ( i_im + x_shift < self.nx_im2 - self.nx_win / 2 - nx_search) and \
                                     ( i_im > self.nx_win / 2) and \
                                     ( i_im < self.nx_im1 - self.nx_win / 2): # if inside im2
                                 
-                                # extract ref and srch sub-images from lines previously read {{{
+                                # extract ref and srch sub-images from lines previously read
+                                if self.debug: print('Reading file 1 - x-direction:',i_im - np.int32(self.nx_win/2),i_im + np.int32(self.nx_win/2)-1)
                                 ref = im1[ : , i_im - np.int32(self.nx_win/2) : i_im + np.int32(self.nx_win/2) ]
                                 # IF ny_win and nx_win are not even then you slave and master sub-images might be shifted by 1 pixel
-                                srch = im2[ np.int32(j_im + y_shift - self.ny_win/2 - 2*ny_search - jmin_im2): \
-                                        np.int32(j_im + y_shift + self.ny_win/2 + 2*ny_search - jmin_im2), \
-                                        i_im + np.int32(x_shift - self.nx_win/2 - 2*nx_search) : i_im + np.int32(x_shift + self.nx_win/2 + 2*nx_search) ]
-                                # }}}
+                                if self.debug:
+                                    print('Reading file 2 - x-direction:', i_im + np.int32(x_shift - self.nx_win/2 - 1*nx_search), i_im + np.int32(x_shift + self.nx_win/2 + 1*nx_search-1))
+                                    print('Reading file 2 - y-direction:', np.int32(j_im + y_shift - self.ny_win/2 - 1*ny_search),np.int32(j_im + y_shift + self.ny_win/2 + 1*nx_search
+                                     - 1) )
+                                srch = im2[ np.int32(j_im + y_shift - self.ny_win/2 - 1*ny_search - jmin_im2): \
+                                        np.int32(j_im + y_shift + self.ny_win/2 + 1*ny_search - jmin_im2), \
+                                        i_im + np.int32(x_shift - self.nx_win/2 - 1*nx_search) : i_im + np.int32(x_shift + self.nx_win/2 + 1*nx_search) ]
+                                
                                 if self.verbose:
                                     print('Columns extract for ref : ', i_im - np.int32(self.nx_win/2), i_im + np.int32(self.nx_win/2))
-                                    print('Columns extract for sla : ', i_im + np.int32(x_shift - self.nx_win/2 - 2*nx_search), i_im + np.int32(x_shift + self.nx_win/2 + 2*nx_search))
+                                    print('Columns extract for sla : ', i_im + np.int32(x_shift - self.nx_win/2 - 1*nx_search), i_im + np.int32(x_shift + self.nx_win/2 + 1*nx_search))
                                 # initialize output values {{{
                                 r_shftxosc = np.float64(0)
                                 r_shftyosc = np.float64(0)
                                 r_snr = np.float64(0)
-                                r_cov = np.zeros(3, dtype=np.float64)
-                                # }}}
+                                r_cov = np.zeros(3, dtype=np.float64) # }}}
                                 
                                 if self.scaling is not None and self.use_scaling: # {{{
                                     
@@ -499,10 +482,9 @@ class corr_class:
                                     nx_search = nx_search/self.scaling
                                     
                                     if self.verbose:
-                                        print(np.size(srch,0),np.size(ref,0),4*ny_search,np.size(ref,0) + 4*ny_search)
-                                # }}}
+                                        print(np.size(srch,0),np.size(ref,0) + 2*ny_search,np.size(im2,0)) # }}}
                                 
-                                if np.size(srch,0) == (np.size(ref,0) + 4*ny_search):
+                                if np.size(srch,0) == (np.size(ref,0) + 2*ny_search):
                                     if self.verbose:
                                         print('Running fortran..')
                                     r_shftxosc, r_shftyosc, r_snr, r_cov = \
@@ -510,10 +492,9 @@ class corr_class:
     
                                     if self.scaling is not None and self.use_scaling: #{{{
                                         r_shftxosc = r_shftxosc*self.scaling
-                                        r_shftyosc = r_shftyosc*self.scaling
-                                    # }}}
+                                        r_shftyosc = r_shftyosc*self.scaling # }}}
                                     if self.verbose:
-                                        print(r_shftxosc, r_shftyosc, r_snr, r_cov)
+                                        print(np.int32(i_im),r_shftxosc+x_shift, np.int32(j_im), r_shftyosc+y_shift, r_snr, r_cov)
 
                                     #r_shftxosc = \
                                     #        ampcor_flex_ifort.ampcor_flex(ref.T) # .T transpose and put in Fortran order
@@ -548,460 +529,7 @@ class corr_class:
     	                    #}}}
     	                #}}}
         if not self.off.IsUsed:
-            f.close
-    # }}}    
-    def ampcor2(self): # {{{
-       
-        import ampcor_tflex
-        if self.progress:
-            self.describe()
-        # default values for x_start,end y_start,end {{{
-        if self.x_start == None:
-            self.x_start = self.nx_win/2
-        if self.x_end == None:
-            self.x_end = self.nx_im1-self.nx_win/2
-        if self.y_start == None:
-            self.y_start = self.ny_win/2
-        if self.y_end == None:
-            self.y_end = self.ny_im1-self.ny_win/2
-        # }}}
-        # writing initial file for offset map{{{
-        inif = open(self.output_file+'.in','w')
-        inif.write(self.im1file+'\n') #input 1
-        inif.write(self.im2file+'\n') #input 2
-        inif.write(self.output_file+'\n') # output
-        inif.write('%s %s\n'%(self.nx_im1,self.nx_im2))
-        inif.write('%s %s %s \n'%(self.y_start,self.y_end,self.ny_step)) #ymin ymax stepy
-        inif.write('%s %s %s \n'%(self.x_start,self.x_end,self.nx_step)) #xmin xmax stepx
-        inif.write('%s %s \n'%(self.nx_win,self.ny_win)) # window size x y
-        inif.write('%s %s \n'%(self.nx_search,self.ny_search)) # search in x y
-        inif.write('1 1 \n') # oversampling factor x y
-        inif.write('%s %s \n'%(self.x0_shift,self.y0_shift)) # initial offset x y
-        inif.write('0. 1.e10\n') # snr threshold, covariance threshold (as set we take everything and do not filter) 
-        inif.write('f f\n') # Debug and Display Flags T/F
-        inif.close()
-
-        ny_off = np.int32( (self.y_end-self.y_start)/self.ny_step )
-        nx_off = np.int32( (self.x_end-self.x_start)/self.nx_step ) # x from self.nx_win/2 to self.nx_im1-self.nx_win/2 with step = nx_step
-
-        if self.off.IsUsed and self.off.data.vx is None:
-            self.p_offmap_out()
-        #}}}
-        if self.restart: # {{{
-            if os.path.exists(self.output_file):
-                statinfo = os.stat(self.output_file)
-                if statinfo.st_size != 0:
-                    try:
-                        x, offx, y, offy, snr0, tmp1, tmp2, tmp3 = np.loadtxt(self.output_file,unpack=True)
-                        if max(y) >= self.y_end:
-                            return
-                        if max(y) > self.y_start:
-                            self.y_start = max(y)-self.ny_step # new y start from previous run
-                    except:
-                        self.restart=False
-                else:
-                    self.restart=False
-            else:
-                self.restart=False
-        # }}}
-        # read initial offsetmap if provided {{{
-        # should be 2 files : init_shiftmap+'
-        if self.init_shiftmap is not None and self.use_shiftmap:
-            self.shiftmap = off_param()
-            self.shiftmap.load(self.init_shiftmap+'.par')
-
-            f=open(self.init_shiftmap+'.vx','rb')
-            vx_shiftmap = np.fromfile(f,dtype=np.float32).reshape(self.shiftmap.nrec,self.shiftmap.npix).byteswap()
-            f.close
-
-            f=open(self.init_shiftmap+'.vy','rb')
-            vy_shiftmap = np.fromfile(f,dtype=np.float32).reshape(self.shiftmap.nrec,self.shiftmap.npix).byteswap()
-            f.close
-
-            #shiftmap = vx_shiftmap + 1j * vy_shiftmap
-            self.shiftmap.m_xshift = vx_shiftmap
-            self.shiftmap.m_yshift = vy_shiftmap
-            
-            del vx_shiftmap
-            del vy_shiftmap
-        # }}}    
-
-        # initialization input, output {{{
-        im1 = np.zeros([self.ny_win,self.nx_im1],dtype=self.datatype)
-    
-        # read master and slave files (may cause memory problem if the file is too large)
-        
-        f1 = open(self.im1file,'rb')
-        
-        jstart_master = np.int32(self.y_start-self.ny_win/2).clip(0,self.ny_im1-self.ny_win)
-        f1.seek(self.nx_im1*np.dtype(self.datatype).itemsize*jstart_master)
-        ny_master = np.int32( self.y_end - self.y_start + self.ny_win + 1 ) # y from self.ny_win/2 to self.ny_im1-self.ny_win/2 with step = ny_step
-        if (jstart_master + ny_master) > self.ny_im1:
-            ny_master = self.ny_im1 - jstart_master
-        if ny_master < self.ny_win:
-            return
-        
-        try:
-            master = np.fromfile(f1,count=ny_master*self.nx_im1,dtype=self.datatype).byteswap().reshape(ny_master,self.nx_im1)
-            f1.close()
-        except Exception:
-            print('ny_master:',ny_master)
-            print('self.nx_im1:',self.nx_im1)
-            print('datatype:',datatype)
-    
-            print(traceback.format_exc())
-            return
-        
-        if self.debug:
-            import matplotlib.pyplot as plt
-            plt.imshow(np.abs(master)**0.35)
-            plt.show()
-
-        min_y0_shift = self.y0_shift
-        max_y0_shift = self.y0_shift
-
-        if self.y0_polyshift is not None: # {{{
-            min_y0_shift = min( [ min( np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_start*self.y0_polyshift[2])), \
-                    min(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_end*self.y0_polyshift[2])) ])
-            max_y0_shift = max( [ max(np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_start*self.y0_polyshift[2])), \
-                    max(np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1) * self.y0_polyshift[1] + self.y_end*self.y0_polyshift[2]))])
-        # }}}
-
-        if self.use_shiftmap: # {{{
-            # find
-            j_shift_start = np.int32((self.y_start - self.shiftmap.y_start) / self.shiftmap.azsp).clip(0,self.shiftmap.nrec-1)
-            j_shift_end = np.int32(( ny_master + self.y_start - self.shiftmap.y_start) / self.shiftmap.azsp).clip( 0, self.shiftmap.nrec-1)
-            min_y0_shift = np.int32( np.min(self.shiftmap.m_yshift[j_shift_start:j_shift_end,:].imag) + min_y0_shift)
-            max_y0_shift = np.int32( np.max(self.shiftmap.m_yshift[j_shift_start:j_shift_end,:].imag) + max_y0_shift)
-        #}}}
-
-        if self.use_searchmap: # {{{
-            j_search_start = np.int32((self.y_start - self.searchmap.y_start) / self.searchmap.azsp).clip(0,self.searchmap.nrec-1)
-            j_search_end = np.int32(( ny_master + self.y_start - self.searchmap.y_start) / self.searchmap.azsp).clip( 0, self.searchmap.nrec-1)
-            max_ny_search = np.int32( np.max(self.searchmap.m_ny_search[j_search_start:j_search_end,:]) )
-        else:
-            max_ny_search = self.ny_search
-        #}}}
-
-        jmin = np.int32( self.y_start + min_y0_shift - self.ny_win/2 - 2*max_ny_search).clip(0 , self.ny_im2 - self.ny_win - max_ny_search)
-        jmax = np.int32( ny_master + self.y_start + max_y0_shift + self.ny_win/2 + 2*max_ny_search).clip( 0, self.ny_im2 - self.ny_win - max_ny_search) #clip between 0 and number of lines in im2
-
-        ny_slave = jmax - jmin + 1
-        
-        if ny_slave < (self.ny_win+2*max_ny_search):
-            return
-        
-        jstart_slave = jmin
-       
-        try:
-            f2 = open(self.im2file,'rb')
-            f2.seek(self.nx_im2*np.dtype(self.datatype).itemsize*jmin)
-            slave = np.fromfile(f2,count=ny_slave*self.nx_im2,dtype=self.datatype).byteswap().reshape(ny_slave,self.nx_im2)
-            f2.close()
-        except Exception:
-            print('ny_slave:',ny_slave)
-            print('nx_im2:',self.nx_im2)
-            print('datatype:',self.datatype)
-            print(traceback.format_exc())
-            return
-    
-        ny_off = np.int32( (self.y_end-self.y_start)/self.ny_step)
-        nx_off = np.int32( (self.x_end-self.x_start)/self.nx_step) # x from self.nx_win/2 to self.nx_im1-self.nx_win/2 with step = nx_step
-        
-        jmin_previous = 0
-        jmax_previous = 0
-        jmin_slave_previous = 0
-        jmax_slave_previous = 0
-   
-        if not self.off.IsUsed:
-            if self.restart:
-                f = open(self.output_file,'a')
-            else:
-                f = open(self.output_file,'w')
-
-        mask_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int8) #Byte (-128 to 127)
-        nx_search_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int16)
-        ny_search_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int16)
-        j0_master_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int32) #Integer (-2147483648 to 2147483647)
-        jsize_master_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int16) #Integer (-32768 to 32767)
-        i0_master_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int32)
-        isize_master_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int16)
-        j0_slave_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int32) #Integer (-2147483648 to 2147483647)
-        jsize_slave_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int16) #Integer (-32768 to 32767)
-        i0_slave_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int32)
-        isize_slave_fortran = np.zeros( (self.off.nrec,self.off.npix) ,dtype=np.int16)
-        # }}}
-        for j_off in range(0,ny_off):# loop over y-direction (azimuth for SAR) {{{
-    
-            if self.verbose:
-                print('\n',j_off,'/',ny_off)
-
-            j_im = j_off*self.ny_step+self.y_start
-    
-            if (j_im+self.y0_shift > 2*self.ny_search+self.ny_win/2) and \
-                    (j_im+self.y0_shift < self.ny_im2-self.ny_win/2-2*self.ny_search) and \
-                    (j_im > self.ny_win/2) and \
-                    (j_im < self.ny_im1-self.ny_win/2):
-                
-                # read mask if provided {{{
-                # if entire line is masked, process_this_line is set to False
-                if self.mask is not None and self.use_mask:
-                    j_mask = np.int32( (j_im - self.mask.y_start) / self.mask.azsp) # conversion from im y-coord to mask y-coord 
-                    if np.max(self.mask.data[j_mask,:]) == 1:
-                        process_this_line = True
-                    else:
-                        process_this_line = False
-                else:
-                    process_this_line = True
-                # }}}
-     
-                jmin_im1 = np.int32(j_im-self.ny_win/2) # starting line to be read
-                jmax_im1 = np.int32(j_im+self.ny_win/2) # ending line to be read
-    
-                # find lines to read based on init shift {{{
-                min_y0_shift = self.y0_shift
-                max_y0_shift = self.y0_shift
-
-                if self.y0_polyshift is not None and self.use_polyshift:
-                    # not using self.y0_shift
-                    min_y0_shift = min(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + j_im*self.y0_polyshift[2]))
-                    max_y0_shift = max(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + j_im*self.y0_polyshift[2]))
-
-                if self.shiftmap is not None and self.use_shiftmap:
-                    # shift is self.y0_shift + self.shiftmap.m_yshift
-                    j_shift = np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp) # conversion from image y-coord to offsetmap y-corrd
-                    min_y0_shift = np.int32( min( self.shiftmap.m_yshift[j_shift,:].imag) + min_y0_shift)
-                    max_y0_shift = np.int32( max( self.shiftmap.m_yshift[j_shift,:].imag) + max_y0_shift)
-                # }}}
-                if self.searchmap is not None and  self.use_searchmap:
-                    j_search = np.int32((j_im - self.searchmap.y_start) / self.searchmap.azsp) # conversion from image y-coord to offsetmap y-corrd
-                    max_ny_search = np.int32( max( self.searchmap.m_ny_search[j_search,:]) )
-                    if self.verbose:
-                        print('max_ny_search (search_map):',max_ny_search)
-                else:
-                    max_ny_search = self.ny_search
-
-                jmin_im2 = np.int32( j_im + min_y0_shift - self.ny_win/2 - 2*max_ny_search)
-                jmax_im2 = np.int32( j_im + max_y0_shift + self.ny_win/2 + 2*max_ny_search)
-                
-                if (jmin_im2 < 0) or (jmax_im2 > self.ny_im2):
-                    process_this_line=False
-    
-                if process_this_line:
-                     
-                    for i_off in range(0,nx_off):# loop over x-direction (range for SAR) {{{
-                        
-                        if self.verbose:
-                            print('\n',i_off,'/',nx_off,'- j=',j_off,'/',ny_off)
-
-                        i_im = np.int32(i_off*self.nx_step+self.x_start) # from output offset x-coord to im x-coord
-    
-                        # read mask if provided {{{
-                        if self.mask is not None and self.use_mask:
-                            j_mask = np.int32((j_im - self.mask.y_start) / self.mask.azsp) # conversion from im y-coord to mask y-coord
-                            i_mask = np.int32((i_im - self.mask.x_start) / self.mask.rgsp) # conversion from im x-coord to mask x-coord
-                            if self.mask.data[j_mask,i_mask] == 1:
-                                process_this_point = True
-                            else:
-                                process_this_point = False
-                        else:
-                            process_this_point = True
-                        # }}}
-                        
-                        if process_this_point:
-                            # read init offset if provided {{{
-                            x_shift = self.x0_shift
-                            y_shift = self.y0_shift
-
-                            if self.x0_polyshift  is not None and self.use_polyshift:
-                                # use polynom instead of constant as initial shift
-                                x_shift = np.int32(self.x0_polyshift[0] + i_im*self.x0_polyshift[1] + j_im*self.x0_polyshift[2])
-                                y_shift = np.int32(self.y0_polyshift[0] + i_im*self.y0_polyshift[1] + j_im*self.y0_polyshift[2])
-                             
-                            if self.shiftmap is not None and self.use_shiftmap:
-                                # adding shiftmap to initial offset
-                                j_shift = np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp)
-                                i_shift = np.int32((i_im - self.shiftmap.x_start) / self.shiftmap.rgsp)
-                                x_shift = np.int32(self.shiftmap.m_xshift[j_shift,i_shift] + x_shift)
-                                y_shift = np.int32(self.shiftmap.m_yshift[j_shift,i_shift].imag + y_shift)
-    
-                            # }}}
-                            if self.searchmap is not None and self.use_searchmap:
-                                j_search = np.int32((j_im - self.searchmap.y_start) / self.searchmap.azsp)
-                                i_search = np.int32((i_im - self.searchmap.x_start) / self.searchmap.rgsp)
-                                nx_search = np.int32(self.searchmap.m_nx_search[j_search,i_search])
-                                ny_search = np.int32(self.searchmap.m_ny_search[j_search,i_search])
-                            else:
-                                nx_search = self.nx_search
-                                ny_search = self.ny_search
-                            # }}}
-
-                            if (i_im+x_shift > 2*nx_search + self.nx_win/2) and \
-                                    ( i_im + x_shift < self.nx_im2 - self.nx_win / 2 - 2 * nx_search) and \
-                                    ( i_im > self.nx_win / 2) and \
-                                    ( i_im < self.nx_im1 - self.nx_win / 2): # if inside im2
-                                
-                                # extract ref and srch sub-images from lines previously read {{{
-                                #ref = im1[ : , i_im - np.int32(self.nx_win/2) : i_im + np.int32(self.nx_win/2) ]
-                                xoff = np.int32((i_im - self.off.x_start) / self.off.rgsp)
-                                yoff = np.int32( (j_im - self.off.y_start) / self.off.azsp)
-                                
-                                nx_search_fortran[yoff,xoff] = nx_search
-                                ny_search_fortran[yoff,xoff] = ny_search
-
-                                j0_master_fortran[yoff,xoff] = np.int32(j_im-self.ny_win/2)
-                                jsize_master_fortran[yoff,xoff] = np.int32(self.ny_win)
-                                i0_master_fortran[yoff,xoff] = i_im - np.int32(self.nx_win/2)
-                                isize_master_fortran[yoff,xoff] = np.int32(self.nx_win)
-
-                                j0_slave_fortran[yoff,xoff] = np.int32(j_im + y_shift - self.ny_win/2 - 2*ny_search ) 
-                                jsize_slave_fortran[yoff,xoff] = np.int32(self.ny_win + 4*ny_search)
-                                i0_slave_fortran[yoff,xoff] = i_im + np.int32(x_shift - self.nx_win/2 - 2*nx_search)
-                                isize_slave_fortran[yoff,xoff] = np.int32(self.nx_win + 4*nx_search)
-
-                                mask_fortran[yoff,xoff] = 1
-
-                                if self.verbose:
-                                    print('nx_search, ny_search', nx_search_fortran[yoff,xoff],ny_search_fortran[yoff,xoff])
-                                    print('j0_master_fortran, i0_master_fortran',j0_master_fortran[yoff,xoff],i0_master_fortran[yoff,xoff])
-                                    print('jsize_master_fortran,isize_master_fortran',jsize_master_fortran[yoff,xoff],isize_master_fortran[yoff,xoff])
-                                    print('j0_slave_fortran,i0_slave_fortran',j0_slave_fortran[yoff,xoff],i0_slave_fortran[yoff,xoff])
-                                    print('jsize_slave_fortran,isize_slave_fortran',jsize_slave_fortran[yoff,xoff],isize_slave_fortran[yoff,xoff])
-    	                    #}}}
-    	                #}}}
-
-        
-        xoff_out_map, yoff_out_map, r_snr_map, r_cov_map = ampcor_tflex.ampcor_tflex(master.T,slave.T, \
-                nx_search_fortran.T, ny_search_fortran.T, mask_fortran.T, \
-                i0_master_fortran.T, j0_master_fortran.T, isize_master_fortran.T, jsize_master_fortran.T, \
-                i0_slave_fortran.T, j0_slave_fortran.T, isize_slave_fortran.T, jsize_slave_fortran.T)
-
-        del master, slave, ny_search_fortran, nx_search_fortran, mask_fortran, i0_master_fortran, j0_master_fortran, isize_master_fortran
-        del i0_slave_fortran, j0_slave_fortran, isize_slave_fortran, jsize_slave_fortran
-
-        for j_off in range(0,ny_off):# loops to store results in self.off {{{
-            j_im = j_off*self.ny_step+self.y_start
-    
-            if (j_im+self.y0_shift > 2*self.ny_search+self.ny_win/2) and \
-                    (j_im+self.y0_shift < self.ny_im2-self.ny_win/2-2*self.ny_search) and \
-                    (j_im > self.ny_win/2) and \
-                    (j_im < self.ny_im1-self.ny_win/2):
-                
-                # read mask if provided {{{
-                # if entire line is masked, process_this_line is set to False
-                if self.mask is not None and self.use_mask:
-                    j_mask = np.int32( (j_im - self.mask.y_start) / self.mask.azsp) # conversion from im y-coord to mask y-coord 
-                    if np.max(self.mask.data[j_mask,:]) == 1:
-                        process_this_line = True
-                    else:
-                        process_this_line = False
-                else:
-                    process_this_line = True
-                # }}}
-     
-                jmin_im1 = np.int32(j_im-self.ny_win/2) # starting line to be read
-                jmax_im1 = np.int32(j_im+self.ny_win/2) # ending line to be read
-    
-                # find lines to read based on init shift {{{
-                min_y0_shift = self.y0_shift
-                max_y0_shift = self.y0_shift
-
-                if self.y0_polyshift is not None and self.use_polyshift:
-                    # not using self.y0_shift
-                    min_y0_shift = min(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + j_im*self.y0_polyshift[2]))
-                    max_y0_shift = max(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + j_im*self.y0_polyshift[2]))
-
-                if self.shiftmap is not None and self.use_shiftmap:
-                    # shift is self.y0_shift + self.shiftmap.m_yshift
-                    j_shift = np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp) # conversion from image y-coord to offsetmap y-corrd
-                    min_y0_shift = np.int32( min( self.shiftmap.m_yshift[j_shift,:].imag) + min_y0_shift)
-                    max_y0_shift = np.int32( max( self.shiftmap.m_yshift[j_shift,:].imag) + max_y0_shift)
-                # }}}
-                if self.searchmap is not None and  self.use_searchmap:
-                    j_search = np.int32((j_im - self.searchmap.y_start) / self.searchmap.azsp) # conversion from image y-coord to offsetmap y-corrd
-                    max_ny_search = np.int32( max( self.searchmap.m_ny_search[j_search,:]) )
-                else:
-                    max_ny_search = self.ny_search
-
-                jmin_im2 = np.int32( j_im + min_y0_shift - self.ny_win/2 - 2*max_ny_search)
-                jmax_im2 = np.int32( j_im + max_y0_shift + self.ny_win/2 + 2*max_ny_search)
-                
-                if (jmin_im2 < 0) or (jmax_im2 > self.ny_im2):
-                    if self.verbose:
-                        print('line not processed: outside slave image, jmin_im2=',jmin_im2)
-                    process_this_line=False
-    
-                if process_this_line:
-                     
-                    for i_off in range(0,nx_off):# loop over x-direction (range for SAR) {{{
-    
-                        i_im = np.int32(i_off*self.nx_step+self.x_start) # from output offset x-coord to im x-coord
-    
-                        # read mask if provided {{{
-                        if self.mask is not None and self.use_mask:
-                            j_mask = np.int32((j_im - self.mask.y_start) / self.mask.azsp) # conversion from im y-coord to mask y-coord
-                            i_mask = np.int32((i_im - self.mask.x_start) / self.mask.rgsp) # conversion from im x-coord to mask x-coord
-                            if self.mask.data[j_mask,i_mask] == 1:
-                                process_this_point = True
-                            else:
-                                process_this_point = False
-                        else:
-                            process_this_point = True
-                        # }}}
-                        
-                        if process_this_point:
-                            # read init offset if provided {{{
-                            x_shift = self.x0_shift
-                            y_shift = self.y0_shift
-
-                            if self.x0_polyshift  is not None and self.use_polyshift:
-                                # use polynom instead of constant as initial shift
-                                x_shift = np.int32(self.x0_polyshift[0] + i_im*self.x0_polyshift[1] + j_im*self.x0_polyshift[2])
-                                y_shift = np.int32(self.y0_polyshift[0] + i_im*self.y0_polyshift[1] + j_im*self.y0_polyshift[2])
-                             
-                            if self.shiftmap is not None and self.use_shiftmap:
-                                # adding shiftmap to initial offset
-                                if self.verbose:
-                                    print('adding shiftmap to initial offset')
-                                j_shift = np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp)
-                                i_shift = np.int32((i_im - self.shiftmap.x_start) / self.shiftmap.rgsp)
-                                if self.verbose:
-                                    print('j_im,i_im',j_im,i_im)
-                                    print('j_shift,i_shift',j_shift,i_shift)
-                                x_shift = np.int32(self.shiftmap.m_xshift[j_shift,i_shift] + x_shift)
-                                y_shift = np.int32(self.shiftmap.m_yshift[j_shift,i_shift] + y_shift)
-    
-                            # }}}
-    
-                            if (i_im+x_shift > 2*nx_search + self.nx_win/2) and \
-                                    ( i_im + x_shift < self.nx_im2 - self.nx_win / 2 - 2 * nx_search) and \
-                                    ( i_im > self.nx_win / 2) and \
-                                    ( i_im < self.nx_im1 - self.nx_win / 2): # if inside im2
-                                
-                                if r_snr_map[xoff, yoff] !=0:
-                                    #format(1x,i7,1x,f9.3,1x,i7,1x,f11.3,1x,f10.5,1x,f10.6,1x,f10.6,1x,f10.6) in fortran code
-                                    if self.off.IsUsed:
-                                        xoff = np.int32((i_im - self.off.x_start) / self.off.rgsp)
-                                        yoff = np.int32( (j_im - self.off.y_start) / self.off.azsp)
-                                        #if r_snr > self.off.data.snr[ yoff , xoff ]:
-                                        self.off.data.vx[ yoff , xoff ] = xoff_out_map[xoff, yoff]+x_shift
-                                        self.off.data.vy[ yoff , xoff ] = yoff_out_map[xoff, yoff]+y_shift
-                                        self.off.data.snr[ yoff , xoff ] = r_snr_map[xoff, yoff]
-                                    else:
-                                        f.write(' '+'{:7d}'.format(np.int32(i_im))+' '+'{:9.3f}'.format(r_shftxosc+x_shift)+\
-                                                ' '+'{:7d}'.format(np.int32(j_im))+' '+'{:11.3f}'.format(r_shftyosc+y_shift)+\
-                                                ' '+'{:10.5f}'.format(r_snr)+ \
-                                                ' '+'{:10.6f}'.format(r_cov[0])+ \
-                                                ' '+'{:10.6f}'.format(r_cov[1])+ \
-                                                ' '+'{:10.6f}'.format(r_cov[2])+'\n' )
-
-    	                    #}}}
-    	                #}}}
-
-
-        if not self.off.IsUsed:
-            f.close
-    # }}}    
+            f.close # }}}     
 
     def off_write(self,binary=False): # {{{
         
@@ -1067,10 +595,7 @@ class corr_class:
         if binary:
             self.off.write(self.output_file+'.par')
             off = np.float32(self.off.data.vx) + 1j * np.float32(self.off.data.vy)
-            off.byteswap().tofile(self.output_file+'.off')
-
-    # }}}   
-    #}}}
+            off.byteswap().tofile(self.output_file+'.off') # }}}      
     def off4shiftmap(self,size=9,thre=1): # {{{
         from median_filter_off import median_filter_off
         from scipy.interpolate import griddata
@@ -1168,8 +693,7 @@ class corr_class:
         axarr[1].imshow(self.off.data.vx)
         axarr[2].imshow(self.off.data.vy)
         self.shiftmap.m_xshift = grid_vx
-        self.shiftmap.m_yshift = grid_vy
-    # }}}
+        self.shiftmap.m_yshift = grid_vy # }}}
     def off4polyfit(self): # {{{
         from scipy.linalg import lstsq
         
@@ -1210,8 +734,7 @@ class corr_class:
         print('POLYNOM Y: ',C[0],'*X+',C[1],'*Y+',C[2])
         self.y0_polyshift = [C[2]-C[1]*self.off.x_start/self.off.rgsp-C[0]*self.off.y_start/self.off.azsp,C[1]/self.off.rgsp,C[0]/self.off.azsp] # Y-X are inverted, scale poly from off to slc
         vy1 = vy1 - (C[0]*x1 + C[1]*y1 + C[2])
-        
-    # }}}
+        # }}}
     def display_offmap(self): # {{{
 
         import matplotlib.pyplot as plt

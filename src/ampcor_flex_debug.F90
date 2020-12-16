@@ -43,7 +43,10 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
     parameter(i_covsm=64)
     parameter(i_cwm=16)
 
-    
+    !integer i_sinc_fourier,i_sinc,i_fourier
+    !parameter(i_sinc=1,i_fourier=2) !i_dump_images=1 means dump debug feature is on
+    !parameter(i_sinc_fourier=i_fourier)
+
     integer i_sinc_window
     parameter(i_sinc_window=2)
 
@@ -108,7 +111,10 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
     r_beta = .75
     r_relfiltlen = 6.0
 
+    !call fill_sinc(r_beta,r_relfiltlen,i_decfactor,i_weight,r_pedestal,i_intplength,r_fdelay,r_fintp)
 
+    !print*,'nx_search:',nx_search
+    !print*,'ny_search:',ny_search
     if (nx_s .NE. nx_m+2*nx_search) THEN
         print*,'nx_s:',nx_s
         print*,'nx_m:',nx_m
@@ -131,7 +137,7 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
     
     nx_sp = nx_m + 2*nx_search
     ny_sp = ny_m + 2*ny_search
-
+    
     i_wsyjp = ny_m + 2*i_srchp
     i_wsxjp = nx_m + 2*i_srchp
 
@@ -140,7 +146,7 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
 
     i_n2wsxi = 2**(nextpower(nx_m))
     i_n2wsyi = 2**(nextpower(ny_m))
-
+    
     r_snrth = 0.0
     r_covth = 1.e10
     r_covth = min(r_covth,999.999998)
@@ -149,14 +155,22 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
     r_imgi(1:nx_m,1:ny_m) = cabs(c_refimg(1:nx_m,1:ny_m))
     r_imgj(1:nx_sp,1:ny_sp) = cabs(c_srchimg(1:nx_sp,1:ny_sp))
 
+    print*,'r_imgi(10,10)',r_imgi(10,10)
+    print*,'r_imgj(10,10)',r_imgj(10,10)
+    print *,'c_refimg(10,10)',c_refimg(10,10)
+    print *,'c_srchimg(10,10)',c_srchimg(10,10)
+
     call correlate(r_imgi,r_imgj,nx_m,ny_m,nx_sp, &
         ny_sp,1,r_meani,r_stdvi,r_meanj, &
         r_stdvj,r_peak,r_noise,r_cov,r_eval1, &
         r_eval2,r_evec1,r_evec2,r_imgc,i_shiftx,i_shifty,i_edge, &
         i_flag)
 
+     print *,'i_shiftx, i_shifty', i_shiftx, i_shifty
      r_shftx = float(i_shiftx) - nx_search
      r_shfty = float(i_shifty) - ny_search
+
+    print *,'r_shftx,r_shfty:',r_shftx,r_shfty
 
     !decide with points are good matches and print out the match values
     IF (i_flag .eq. 0 .and. i_edge(1) .eq. 0 .and. i_edge(2) .eq. 0) THEN  !{{{
@@ -175,20 +189,33 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
 
         r_snr = r_peak**2/max(r_outside,1.e-10)
         ! }}}
-
+        
+        write(6,'(a,x,2(f20.10,x))') 'Peak/SNR = ',r_peak,r_snr
+        
         IF (r_snr .gt. r_snrth .and. r_cov(1) .lt. r_covth .and. r_cov(2) .lt. r_covth)THEN !{{{
         ! oversample the region around the peak 2 to 1 to estimate the fractional offset {{{
 
+            print *,'write the reference image around peak'
+            print *,'x-direction:',0,'to',nx_m-1
+            print *,'y-direction:',1,'to',ny_m
+
+            print *,'c_refimg(10,10)',c_refimg(11,10)
+            print *,'c_srchimg(10,10)',c_srchimg(11,10)
+            print*,'SUM(c_chipref)',SUM(c_chipref)
             ! write the reference image and search image around the peak into arrays {{{
             DO i_yy=1,ny_m                        
                 DO i_xx=1,nx_m
                     i_index = (i_yy-1)*i_n2wsxi + i_xx
                     IF (i_xx .ge. 1 .and. i_xx .le. nx_m) THEN
+                        if (i_yy .eq. 1) then
+                            print *,'i_index,i_xx,c_refimg(i_x+i_xx-1,i_yy)',i_index,i_xx,c_refimg(i_x+i_xx-1,i_yy)
+                         endif
                         c_chipref(i_index) = c_refimg(i_xx,i_yy)
                     ELSE
                         c_chipref(i_index) = cmplx(0.0,0.0)
                     ENDIF
                 enddo
+                !print*,'SUM(c_chipref)',SUM(c_chipref),i_yy
             enddo
                   
             DO i_yy=1,ny_m
@@ -204,8 +231,12 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                     c_chipref(i_index) = cmplx(0.0,0.0)
                 ENDDO
             ENDDO
-                  
+
            !     now the search image
+
+            print *,'write the search image around peak'
+            print *,'x-direction:',r_shftx+nx_search-i_srchp,'to', i_wsxjp+r_shftx+nx_search-1-i_srchp
+            print *,'y-direction:',1+r_shfty+ny_search-i_srchp,'to', i_wsyjp+r_shfty+ny_search-i_srchp
 
             DO i_yy=1,i_wsyjp
                 do i_xx=1,i_wsxjp
@@ -221,7 +252,7 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                     endif
                 enddo
             enddo
-                  
+            
             do i_yy=1,i_wsyjp
                 do i_xx=i_wsxjp+1,i_n2wsxj
                     i_index = (i_yy-1)*i_n2wsxj + i_xx
@@ -236,10 +267,17 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                 enddo
             enddo
             ! }}}
+            
+            print *,'Deramp data prior to FFT'
+            print *,'c_chipref(10 + (10-1)*i_n2wsxi*i_ovs)',c_chipref(10 + (10-1)*i_n2wsxi*i_ovs)
+            print *,'c_chipsch(10 + (10-1)*i_n2wsxi*i_ovs)',c_chipsch(10 + (10-1)*i_n2wsxi*i_ovs)
 
             !Deramp data prior to FFT     
             call derampc(c_chipref,i_n2wsxi,i_n2wsyi)
             call derampc(c_chipsch,i_n2wsxj,i_n2wsyj)
+
+            print *,'c_chipref(10 + (10-1)*i_n2wsxi*i_ovs)',c_chipref(10 + (10-1)*i_n2wsxi*i_ovs)
+            print *,'c_chipsch(10 + (10-1)*i_n2wsxi*i_ovs)',c_chipsch(10 + (10-1)*i_n2wsxi*i_ovs)
                   
             !forward fft the data
             i_nn(1) = i_n2wsxj
@@ -248,14 +286,24 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
             i_dir = 1
             
             call fourn(c_chipsch,i_nn,i_dir)
-            
+            print *,'c_chipref(10 + (10-1)*i_n2wsxi*i_ovs)',c_chipref(10 + (10-1)*i_n2wsxi*i_ovs)
+            print *,'c_chipref(10 + (11-1)*i_n2wsxi*i_ovs)',c_chipref(10 + (11-1)*i_n2wsxi*i_ovs)
+            print *,'c_chipsch(10 + (10-1)*i_n2wsxi*i_ovs)',c_chipsch(10 + (10-1)*i_n2wsxi*i_ovs)
+               
+
             i_nn(1) = i_n2wsxi
             i_nn(2) = i_n2wsyi
+            print*,i_nn
 
             call fourn(c_chipref,i_nn,i_dir)
+            
+            print *,'c_chipref(10 + (10-1)*i_n2wsxi*i_ovs)',c_chipref(10 + (10-1)*i_n2wsxi*i_ovs)
+            print *,'c_chipref(10 + (11-1)*i_n2wsxi*i_ovs)',c_chipref(10 + (11-1)*i_n2wsxi*i_ovs)
+            print *,'c_chipsch(10 + (10-1)*i_n2wsxi*i_ovs)',c_chipsch(10 + (10-1)*i_n2wsxi*i_ovs)
+            
 
             !spread the spectral data out for inverse transforms
-            
+            print *,'spread the spectral data out for inverse transforms'
             i_nn(1) = i_n2wsxi*i_ovs
             i_nn(2) = i_n2wsyi*i_ovs
 
@@ -285,7 +333,9 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                 enddo
             enddo
             
+            print *,'c_osref(10 + (10-1)*i_n2wsxi*i_ovs)',c_osref(10 + (10-1)*i_n2wsxi*i_ovs)
             call fourn(c_osref,i_nn,i_dir)
+            print *,'c_osref(10 + (10-1)*i_n2wsxi*i_ovs)',c_osref(10 + (10-1)*i_n2wsxi*i_ovs)
 
             i_nn(1) = i_n2wsxj*i_ovs
             i_nn(2) = i_n2wsyj*i_ovs
@@ -300,26 +350,27 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
             enddo
                   
             do k=1,i_n2wsyj/2                  
-            do l=1,i_n2wsxj/2
-            i_index = (k-1)*i_nn(1) + l
-            i_indexi = (k-1)*i_n2wsxj + l
-            c_ossch(i_index) = c_chipsch(i_indexi)
-            i_index = (i_nn(2) - i_n2wsyj/2 + k - 1)*i_nn(1) + l
-            i_indexi = (k + i_n2wsyj/2 - 1)*i_n2wsxj + l
-            c_ossch(i_index) = c_chipsch(i_indexi)
-            i_index = (k-1)*i_nn(1) + i_nn(1) - i_n2wsxj/2 + l
-            i_indexi = (k-1)*i_n2wsxj + i_n2wsxj/2 + l
-            c_ossch(i_index) = c_chipsch(i_indexi)
-            i_index = (i_nn(2) - i_n2wsyj/2 + k - 1)*i_nn(1) + i_nn(1) - i_n2wsxj/2 + l
-            i_indexi = (k + i_n2wsyj/2 - 1)*i_n2wsxj + l + i_n2wsxj/2
-            c_ossch(i_index) = c_chipsch(i_indexi)
-            enddo
+                do l=1,i_n2wsxj/2
+                    i_index = (k-1)*i_nn(1) + l
+                    i_indexi = (k-1)*i_n2wsxj + l
+                    c_ossch(i_index) = c_chipsch(i_indexi)
+                    i_index = (i_nn(2) - i_n2wsyj/2 + k - 1)*i_nn(1) + l
+                    i_indexi = (k + i_n2wsyj/2 - 1)*i_n2wsxj + l
+                    c_ossch(i_index) = c_chipsch(i_indexi)
+                    i_index = (k-1)*i_nn(1) + i_nn(1) - i_n2wsxj/2 + l
+                    i_indexi = (k-1)*i_n2wsxj + i_n2wsxj/2 + l
+                    c_ossch(i_index) = c_chipsch(i_indexi)
+                    i_index = (i_nn(2) - i_n2wsyj/2 + k - 1)*i_nn(1) + i_nn(1) - i_n2wsxj/2 + l
+                    i_indexi = (k + i_n2wsyj/2 - 1)*i_n2wsxj + l + i_n2wsxj/2
+                    c_ossch(i_index) = c_chipsch(i_indexi)
+                enddo
             enddo
 
             !     inverse transform
-                  
+            print *,'inverse transform'
+            print *,c_ossch(10 + (10-1)*i_n2wsxi*i_ovs)
             call fourn(c_ossch,i_nn,i_dir)
-            
+            print *,c_ossch(10 + (10-1)*i_n2wsxi*i_ovs)
                   
             !     detect images and put into correlation arrays
                   
@@ -329,7 +380,7 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                         r_imgi(i_xx,i_yy) = cabs(c_osref(i_index)/(i_n2wsxi*i_n2wsyi))
                      enddo
             enddo
-                  
+            print*,'r_imgi(10,10),r_imgi(11,11)',r_imgi(10,10),r_imgi(11,11)      
             do i_yy=1,i_wsyjp*i_ovs                        
                      do i_xx=1,i_wsxjp*i_ovs
                         i_index = i_xx + (i_yy-1)*i_n2wsxj*i_ovs
@@ -337,8 +388,9 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                 enddo
             enddo
             ! }}}
-                  
+            print*,'r_imgj(10,10),r_imgj(11,11)',r_imgj(10,10),r_imgj(11,11)
             !     correlate the oversampled chips {{{
+            print *,'correlate the oversampled chips'
             nx_mos = nx_m*i_ovs
             ny_mos = ny_m*i_ovs
             nx_sos = i_wsxjp*i_ovs 
@@ -357,6 +409,9 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
 
             r_shftxos = float(i_shiftxos)/i_ovs - float((i_wsox-1)/2)/i_ovs + r_shftx
             r_shftyos = float(i_shiftyos)/i_ovs - float((i_wsoy-1)/2)/i_ovs + r_shfty
+
+            print *,'r_shftxos,r_shftyos:',r_shftxos,r_shftyos
+            print *,'i_shiftxos,i_shiftyos:',i_shiftxos,i_shiftyos
 
             r_outside = 0.0
             i_cnta = 0
@@ -377,9 +432,9 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
             ! }}}
 
             if(r_snros .gt. r_snrth .and. r_covos(1) .lt. r_covth .and. r_covos(2) .lt. r_covth) THEN ! {{{
-                !print *,'oversample the oversampled correlation surface'
+                print *,'oversample the oversampled correlation surface'
                 ! oversample the oversampled correlation surface {{{
-
+                
                      r_mean_cor = 0.0
                      i_cnta = 0
                      i_px = i_shiftxos+1
@@ -395,7 +450,7 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                            i_index = (i_yy+i_cw/2)*i_cw + i_xx + i_cw/2 + 1
                             
                            if (i_xx+i_px .ge. 1 .and. i_xx+i_px .le. (2*i_srchp+1)*i_ovs .and. &
-                               i_yy+i_py .ge. 1 .and. i_yy+i_py .le. (2*i_srchp+1)*i_ovs) then
+                               i_yy+i_py .ge. 1 .and. i_yy+i_py .le. (2*i_srchp+1)*i_ovs ) then
 
                                c_corrt(i_index) = cmplx(abs(r_imgc(i_xx+i_px,i_yy+i_py)/r_peakos),0.)
                                r_mean_cor = r_mean_cor + cabs(c_corrt(i_index))
@@ -407,7 +462,8 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                         enddo
                         
                      enddo
-
+                    print *,i_cnta
+                    print *,r_mean_cor
                 !     substract off the mean
 
                      r_mean_cor = r_mean_cor/max(i_cnta,1)
@@ -420,7 +476,7 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                      enddo
 
                 !     oversample the correlation surface
-                     
+                        print *,'oversample the correlation surface'
                         !     oversample via Fourier transforms {{{
                         !     forward fft the data
                        !print*,'oversample via Fourier transforms' 
@@ -431,7 +487,7 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                         call fourn(c_corrt,i_nn,i_dir)
                         
                         !     spread the spectral data out for inverse transforms
-                        
+                        print *,'spread the spectral data out for inverse transforms'
                         i_nn(1) = i_cw*i_covs
                         i_nn(2) = i_cw*i_covs
                         i_dir = -1
@@ -461,13 +517,14 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                         enddo
                         
                         !     inverse transform
-                        
+                        print *,'inverse transform'
                         call fourn(c_corr,i_nn,i_dir)
                         
                        ! }}} 
                     ! }}} 
                     !     detect the peak {{{
-                     
+                    print *,'detect the peak' 
+                    print*,'i_cw:',i_cw
                      r_max=0.
                      i_cpeak(1)=0
                      i_cpeak(2)=0
@@ -484,15 +541,21 @@ SUBROUTINE ampcor_flex(c_refimg,c_srchimg,nx_search,ny_search, &
                                    i_cpeak(2) = i_yy - i_cw/2*i_covs
                                endif
                            endif
-                           enddo
+                        enddo
                      enddo
-                    
+          
+                     print*,'i_cpeak:',i_cpeak
+                     print*,'i_covs:',i_covs         
                      r_oscoroff(1) = float(i_cpeak(1)-1)/float(i_covs) 
                      r_oscoroff(2) = float(i_cpeak(2)-1)/float(i_covs)
 
                      xoff_out = r_oscoroff(1)/i_ovs + r_shftxos
                      yoff_out = r_oscoroff(2)/i_ovs + r_shftyos
-                     !print*,'xoff_out,yoff_out:',xoff_out,yoff_out
+                     
+                     print*,'r_oscoroff:',r_oscoroff
+                     print*,'r_shftxos,r_shftyos:',r_shftxos,r_shftyos
+                    
+                     print*,'r_shftxosc,r_shftyosc:',xoff_out,yoff_out
                     ! }}} 
                      
             else 

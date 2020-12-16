@@ -1,0 +1,4 @@
+
+rm ampcor_debug.o
+gfortran -DHAVE_FFTW=1 -g -O2 -ffixed-line-length-132 -c -o ampcor_debug.o ampcor_debug.F
+gfortran  -g -O2 -ffixed-line-length-132   -o ampcor_debug ampcor_debug.o  rdf_reader_f90.o rdf_reader_f90io.o cfft1d_jpl.o -lfftw3f
