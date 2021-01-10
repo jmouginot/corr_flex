@@ -63,8 +63,7 @@ class corr_class:
         
         self.off = off_param()
         self.off.IsUsed=False
-        self.off.data = offset_class()
-# }}}
+        self.off.data = offset_class() # }}}
     def describe(self): # {{{
 
         print('Input parameters: ')
@@ -106,6 +105,37 @@ class corr_class:
         print('self.debug',self.debug)
         print('self.off',self.off)
         print('self.off.IsUsed',self.off.IsUsed) # }}}
+    def prep(self,id1,id2,nx_search=32,ny_search=8,nx_win=128,
+             ny_win=32,nx_step=20,ny_step=5,x0_shift=0,y0_shift=0,
+            x_start=0,y_start=0,x_end=1000,y_end=1000,output_file='offmap_out'): # {{{
+        from fparam import isp_param
+        self.im1file = id1+'.slc'
+        self.im2file = id2+'.slc'
+        p1 = isp_param()
+        p1.load(id1+'.par')
+        p2 = isp_param()
+        p2.load(id2+'.par')
+        self.nx_im1 = p1.npix
+        self.ny_im1 = p1.nrec
+        self.nx_im2 = p2.npix
+        self.ny_im2 = p2.nrec
+        self.output_file = output_file
+        self.nx_search = nx_search
+        self.ny_search = ny_search
+        self.nx_win = nx_win
+        self.ny_win = ny_win
+        self.nx_step = nx_step
+        self.ny_step = ny_step
+        self.x0_shift = x0_shift
+        self.y0_shift = y0_shift
+        self.x_start = x_start
+        self.x_end = x_end
+        self.y_start = y_start
+        self.y_end = y_end
+        self.off.IsUsed = False
+        self.verbose = False
+        self.progress = False
+        self.debug = False # }}}
     def p_output_off(self): # {{{
         # prepare/initialize output offmap 
         ny_off = np.int32( (self.y_end-self.y_start)/self.ny_step )
@@ -129,6 +159,8 @@ class corr_class:
     def ampcor(self): # {{{
         #import ampcor_flex_debug as ampcor_flex
         import ampcor_flex as ampcor_flex
+        #import ampcor_flex_ifort as ampcor_flex
+
         if self.progress:
             self.describe()
         # default values for x_start,end y_start,end {{{
@@ -234,7 +266,7 @@ class corr_class:
 
         f1.seek(self.nx_im1*np.dtype(self.datatype).itemsize*jstart_master)
         
-        ny_master = np.int32( self.y_end - self.y_start + self.ny_win - 1 ) # y from self.ny_win/2 to self.ny_im1-self.ny_win/2 with step = ny_step
+        ny_master = np.int32( self.y_end - self.y_start + self.ny_win + 1 ) # y from self.ny_win/2 to self.ny_im1-self.ny_win/2 with step = ny_step
         if (jstart_master + ny_master) > self.ny_im1: ny_master = self.ny_im1 - jstart_master
         if ny_master < self.ny_win: return
         
@@ -259,7 +291,7 @@ class corr_class:
         min_y0_shift = self.y0_shift
         max_y0_shift = self.y0_shift
 
-        if self.y0_polyshift is not None: # {{{
+        if self.y0_polyshift is not None and self.use_polyshift: # {{{
             min_y0_shift = min( [ min( np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_start*self.y0_polyshift[2])), \
                     min(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_end*self.y0_polyshift[2])) ])
             max_y0_shift = max( [ max(np.int32( self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + self.y_start*self.y0_polyshift[2])), \
@@ -268,8 +300,8 @@ class corr_class:
             # find
             j_shift_start = np.int32((self.y_start - self.shiftmap.y_start) / self.shiftmap.azsp).clip(0,self.shiftmap.nrec-1)
             j_shift_end = np.int32(( ny_master + self.y_start - self.shiftmap.y_start) / self.shiftmap.azsp).clip( 0, self.shiftmap.nrec-1)
-            min_y0_shift = np.int32( np.min(self.shiftmap.m_yshift[j_shift_start:j_shift_end,:]) + min_y0_shift)
-            max_y0_shift = np.int32( np.max(self.shiftmap.m_yshift[j_shift_start:j_shift_end,:]) + max_y0_shift) #}}}
+            min_y0_shift = np.int32( np.min(self.shiftmap.m_yshift[j_shift_start:j_shift_end+1,:]) + min_y0_shift)
+            max_y0_shift = np.int32( np.max(self.shiftmap.m_yshift[j_shift_start:j_shift_end+1,:]) + max_y0_shift) #}}}
         if self.use_searchmap: # {{{
             j_search_start = np.int32((self.y_start - self.searchmap.y_start) / self.searchmap.azsp).clip(0,self.searchmap.nrec-1)
             j_search_end = np.int32(( ny_master + self.y_start - self.searchmap.y_start) / self.searchmap.azsp).clip( 0, self.searchmap.nrec-1)
@@ -284,7 +316,7 @@ class corr_class:
 
         ny_slave = jmax - jmin + 1
         
-        if ny_slave < (self.ny_win+1*max_ny_search): return
+        if ny_slave < (self.ny_win+max_ny_search): return
         
         jstart_slave = jmin
        
@@ -350,7 +382,8 @@ class corr_class:
                     max_y0_shift = max(np.int32(self.y0_polyshift[0] + np.arange(self.nx_im1)*self.y0_polyshift[1] + j_im*self.y0_polyshift[2]))
                 if self.shiftmap is not None and self.use_shiftmap:
                     # shift is self.y0_shift + self.shiftmap.m_yshift
-                    j_shift = np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp) # conversion from image y-coord to offsetmap y-corrd
+                    # .clip(0,self.shiftmap.nrec-1)
+                    j_shift = np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp).clip(0,self.shiftmap.nrec-1) # conversion from image y-coord to offsetmap y-corrd
                     min_y0_shift = np.int32( min( self.shiftmap.m_yshift[j_shift,:]) + min_y0_shift)
                     max_y0_shift = np.int32( max( self.shiftmap.m_yshift[j_shift,:]) + max_y0_shift) # }}}
                 if self.searchmap is not None and  self.use_searchmap:
@@ -410,13 +443,13 @@ class corr_class:
                                 y_shift = np.int32(self.y0_polyshift[0] + i_im*self.y0_polyshift[1] + j_im*self.y0_polyshift[2])                            
                             if self.shiftmap is not None and self.use_shiftmap:
                                 # adding shiftmap to initial offset
+                                j_shift = np.clip(np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp),0,self.shiftmap.nrec-1)
+                                i_shift = np.clip(np.int32((i_im - self.shiftmap.x_start) / self.shiftmap.rgsp),0,self.shiftmap.npix-1)
                                 if self.verbose:
                                     print('adding shiftmap to initial offset')
-                                j_shift = np.int32((j_im - self.shiftmap.y_start) / self.shiftmap.azsp)
-                                i_shift = np.int32((i_im - self.shiftmap.x_start) / self.shiftmap.rgsp)
-                                if self.verbose:
                                     print('j_im,i_im',j_im,i_im)
                                     print('j_shift,i_shift',j_shift,i_shift)
+                                
                                 x_shift = np.int32(self.shiftmap.m_xshift[j_shift,i_shift] + x_shift)
                                 y_shift = np.int32(self.shiftmap.m_yshift[j_shift,i_shift] + y_shift)  # }}}
                             if self.searchmap is not None and self.use_searchmap:
